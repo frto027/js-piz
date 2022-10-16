@@ -1,0 +1,6 @@
+.vscode
+*.exe
+main.js
+main.wasm
+main.html
+out.js
