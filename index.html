@@ -1,8 +1,17 @@
 <htm>
     <body>
         <div id="yes_or_no" src-lua-permission="write_text">change me</div>
-        <div id="yes_or_no1" src-lua-permission="click">click me</div>
-        <div id="yes_or_no3" src-lua-permission="click">hit this</div>
+        <button id="yes_or_no1" src-lua-permission="click">click me</button>
+        <button id="yes_or_no3" src-lua-permission="click">hit this</button>
+        <script>
+                window.luaQueue = window.luaQueue || [];
+                window.luaQueue.push([`
+                    local a,b,c = dom.getElementById("yes_or_no"),dom.getElementById("yes_or_no1"),dom.getElementById("yes_or_no3")
+                    dom.onClick(b,function() dom.setText(a,"1") end)
+                    dom.onClick(c,function() dom.setText(a,"2") end)
+                    `, "<init hello>"])
+        </script>
         <script src="out.js"></script>
+        
     </body>
 </htm>

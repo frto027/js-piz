@@ -1,12 +1,24 @@
 lua_path = 'lua-5.4.4/src/'
-
+lua_patch_path = 'lua_patch/'
 emcc_mode = true
 debug = false
 
+lua_files = Dir["#{lua_path}*.c"].select {
+        |x|
+        file_name = x[lua_path.length .. -3]
+        # we dont need these files
+        if ['lua','luac','liiolib','loslib'].include? file_name
+            false
+        else
+            not File.exists?("#{lua_patch_path}#{file_name}.patch.c") # exclude patched files
+        end
+    }
+Dir["#{lua_patch_path}*.c"].each{
+    |x|
+    lua_files.push x
+}
 
-lua_files = Dir["#{lua_path}*.c"].select {|x| not x.end_with?(
-    'lua.c','luac.c','liolib.c','loslib.c' #exclude source files
-    )}.join(' ')
+lua_files = lua_files.join(' ')
 
 if debug
     debug_flag = '-g -O0 '
@@ -28,7 +40,9 @@ options = [
 ].map{|x|"-s #{x}"}
 #-s STANDALONE_WASM
 if emcc_mode
-    `D:\\emsdk\\emsdk_env.bat && emcc -DEMCC #{debug_flag}-I#{lua_path} main.c #{lua_files} --no-entry #{options.join ' '} --pre-js pre.js -o main.js`
+    compile_cmd = "D:\\emsdk\\emsdk_env.bat && emcc -DEMCC #{debug_flag}-I#{lua_path} main.c #{lua_files} --no-entry #{options.join ' '} --pre-js pre.js -o main.js"
+    puts compile_cmd
+    `#{compile_cmd}`
 
     require "base64"
     File.open("main.wasm","rb") {

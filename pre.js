@@ -17,11 +17,22 @@ function execute_lua(js_str, js_orig_str){
 }
 ready = function(){
     _init_vm();
-    execute_lua(`
-    local a,b,c = dom.getElementById("yes_or_no"),dom.getElementById("yes_or_no1"),dom.getElementById("yes_or_no3")
-    dom.onClick(b,function() dom.setText(a,"1") end)
-    dom.onClick(c,function() dom.setText(a,"2") end)
-    `, "<init hello>")
+    function execute_target(target){
+        if(typeof(target) == 'string'){
+            execute_lua(target, '<anymous>')
+        }else{
+            execute_lua(target[0],target[1] || '<anymous>')
+        }
+    }
+    if(window.luaQueue){
+        for(var i=0;i<window.luaQueue.length;i++){
+            var target = window.luaQueue[i]
+            execute_target(target)
+        }
+    }
+    window.luaQueue = {
+        push:execute_target
+    }
 }
 
 out = function(text){

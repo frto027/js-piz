@@ -126,10 +126,35 @@ int luaopen_dom (lua_State *L) {
   return 1;
 }
 
+LUAMOD_API int (luaopen_base_patch) (lua_State *L);
+static const luaL_Reg my_loadedlibs[] = {
+  {LUA_GNAME, luaopen_base_patch},
+  //{LUA_LOADLIBNAME, luaopen_package},
+  //{LUA_COLIBNAME, luaopen_coroutine},
+  {LUA_TABLIBNAME, luaopen_table},
+  //{LUA_IOLIBNAME, luaopen_io},
+  //{LUA_OSLIBNAME, luaopen_os},
+  {LUA_STRLIBNAME, luaopen_string},
+  {LUA_MATHLIBNAME, luaopen_math},
+  {LUA_UTF8LIBNAME, luaopen_utf8},
+  //{LUA_DBLIBNAME, luaopen_debug},
+  {NULL, NULL}
+};
+LUALIB_API void my_openlibs (lua_State *L) {
+  const luaL_Reg *lib;
+  /* "require" functions from 'loadedlibs' and set results to global table */
+  for (lib = my_loadedlibs; lib->func; lib++) {
+    luaL_requiref(L, lib->name, lib->func, 1);
+    lua_pop(L, 1);  /* remove lib */
+  }
+}
+
+
+
 EMSCRIPTEN_KEEPALIVE
 int init_vm(){
     L = luaL_newstate();  /* create state */
-    luaL_openlibs(L);
+    my_openlibs(L);
     //add dom library
     {
         luaL_requiref(L, "dom", luaopen_dom, 1);
