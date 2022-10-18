@@ -15,23 +15,149 @@ function execute_lua(js_str, js_orig_str){
         console.log(UTF8ToString(ret,1024*1024));
     }
 }
+
+function parseHeapArgs(argf, arg_buffer){
+    var heap = HEAP32
+    var heapf = HEAPF32
+
+    var argflen = argf.length
+    /* limit argument count */
+    if(argflen > 1024){
+        argflen = 1024
+    }
+    var ret = new Array(argf.length)
+    for(var i=0;i<argflen;i++){
+        switch(argf[i]){
+            case 'S':
+                var ptr = heap[(arg_buffer>>2)+i]
+                if(ptr == 0){
+                    ret[i] = undefined
+                }else{
+                    ret[i] = UTF8ToString(ptr, 1024*1024)
+                }
+                break
+            case 'I':
+                ret[i] = heap[(arg_buffer>>2)+i]
+                break
+            case 'F':
+                ret[i] = heapf[(arg_buffer>>2)+i]
+                break
+            default:
+                console.error("unknwon format ",retf[i]," in retf ",retf)
+        }
+    }
+    return ret
+}
+
+var callback_table = new Map()
 ready = function(){
     _init_vm();
-    function execute_target(target){
-        if(typeof(target) == 'string'){
-            execute_lua(target, '<anymous>')
-        }else{
-            execute_lua(target[0],target[1] || '<anymous>')
+
+    /*
+    usage:
+
+    window.onLuaInit = window.onLuaInit || []
+    window.onLuaInit.push(function(module){
+        //do something here
+        window.luaExecute("print('hello, world')", "main.lua")
+
+    })
+
+    */
+
+    window.luaExecute = function(code, name){
+        execute_lua(code, name || "<anymous>")
+    }
+    /*
+    js --post-message--> lua
+    window.luaPostMessage("IIISF","SSII",int,int,int,string,float) => [string,string,int,int]
+    */
+
+    window.luaPostMessage = function(argf, retf /* ... args */){
+        var argslen = argf.length
+        var args = _malloc(argslen + 1)
+        var retslen = retf.length
+        var rets = _malloc(retslen + 1)
+        stringToUTF8(argf,args,argslen+1)
+        stringToUTF8(retf,rets,retslen+1)
+        
+        var arg_buffer = _malloc(argslen * 4)
+        var ret_buffer = _malloc(retslen * 4)
+
+        var heap = HEAP32
+        var heapf = HEAPF32
+        var string_lists = []
+        try{
+            for(var i=0;i<argf.length;i++){
+                var arg = arguments[2+i]
+                switch(argf[i]){
+                    case 'S':
+                        if(typeof(arg) != "string"){
+                            heap[(arg_buffer >> 2) + i] = 0
+                        }else{
+                            var alen = lengthBytesUTF8(arg)+1
+                            var s = _malloc(alen)
+                            string_lists.push(s)
+                            stringToUTF8(arg,s,alen)
+                            heap[(arg_buffer>>2)+i]=s
+                        }
+                        break
+                    case 'I':
+                        if(typeof(arg) == "number"){
+                            heap[(arg_buffer >> 2) + i] = arg || 0
+                        }else{
+                            heap[(arg_buffer >> 2) + i] = 0x7FFFFFFF
+                        }
+                        break
+                    case 'F':
+                        if(typeof(arg) == "number"){
+                            heapf[(arg_buffer>>2) + i] = arg
+                        }else{
+                            heapf[(arg_buffer>>2) + i] = NaN
+                        }
+                        break
+                    default:
+                        console.error("unknown format ",argf[i], " in argf ",argf)
+                }
+            }
+
+            try{
+                _postMessage(args, rets, arg_buffer, ret_buffer)
+                return parseHeapArgs(retf, ret_buffer)
+            }finally{
+                _postMessageCleanup()
+            }
+        }finally{
+            _free(args)
+            _free(rets)
+            _free(arg_buffer)
+            _free(ret_buffer)
+            for(var i=0;i<string_lists.length;i++){
+                _free(string_lists[i])
+            }    
         }
     }
-    if(window.luaQueue){
-        for(var i=0;i<window.luaQueue.length;i++){
-            var target = window.luaQueue[i]
-            execute_target(target)
+    //callback is functions, vm --call--> callback(js)
+    //window.luaRegisterCallback("clickMe", function(name, times1,times2,times3){}, "SIII")
+    window.luaRegisterCallback = function(callback_name, argf, callback){
+        callback_table.set(callback_name,{
+            argf:argf,
+            callback:callback
+        })
+    }
+
+
+    
+    if(window.onLuaInit){
+        for(var i=0;i<window.onLuaInit.length;i++){
+            window.onLuaInit[i](Module)
         }
     }
-    window.luaQueue = {
-        push:execute_target
+
+    window.onLuaInit = {
+        push:function(f){
+            f(Module)
+        }
     }
 }
 
@@ -100,5 +226,43 @@ var FUNCS = {
         elem.addEventListener('click',function(){
             _onclick(t)
         })
+    },
+    vmcallback(callback_name, argf, args){
+        var callback_name_str = UTF8ToString(callback_name, 1024)
+        var argf_str = UTF8ToString(argf, 100)
+        if(!callback_table.has(callback_name_str))
+            return;
+        var cbinfo = callback_table.get(callback_name_str)
+        var argf_cb = cbinfo.argf
+        var args = parseHeapArgs(argf_str, args)
+        for(var i=0;i<argf_cb.length;i++){
+            if(argf_str[i] != argf_cb[i]){
+                //type convert
+                switch(argf_cb[i]){
+                    case 'S':
+                        if(args[i] != undefined){
+                            args[i] = args[i].toString()
+                        }
+                        break
+                    case 'I':
+                        if(argf_str[i] == 'F'){
+                            args[i] = Math.floor(args[i])
+                        }else{
+                            args[i] = undefined
+                        }
+                        break
+                    case 'F':
+                        if(argf_str[i] == 'I'){
+                            //do nothing
+                        }else{
+                            args[i] = undefined
+                        }
+                        break
+                    default:
+                        console.error("unknown format ",argf_cb[i], " in ", argf_cb)
+                }
+            }
+        }
+        cbinfo.callback.apply(/* this is 'Module' */Module, args)
     }
 }

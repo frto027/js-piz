@@ -7,7 +7,7 @@ lua_files = Dir["#{lua_path}*.c"].select {
         |x|
         file_name = x[lua_path.length .. -3]
         # we dont need these files
-        if ['lua','luac','liiolib','loslib'].include? file_name
+        if ['lua','luac','liiolib','loslib', 'loadlib', 'lcorolib'].include? file_name
             false
         else
             not File.exists?("#{lua_patch_path}#{file_name}.patch.c") # exclude patched files

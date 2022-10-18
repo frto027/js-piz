@@ -4,6 +4,8 @@
 #define EMSCRIPTEN_KEEPALIVE
 #endif
 
+#include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include "lua.h"
 #include "lauxlib.h"
@@ -24,6 +26,116 @@ EM_JS(int, docSetText, (doc_t t, const char*text),{
 EM_JS(int, docAddOnclickListener,(doc_t t),{
     return FUNCS.docAddOnclickListener(t);
 });
+EM_JS(void, vmcallback, (const char * callback_name, char* argf, void *args),{
+    FUNCS.vmcallback(callback_name, argf, args);
+});
+
+int post_cleanup_count = 0;
+
+/* gc strings */
+EMSCRIPTEN_KEEPALIVE
+void postMessageCleanup(){
+    if(post_cleanup_count != 0){
+        lua_pop(L,post_cleanup_count);
+        post_cleanup_count = 0;
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE
+void postMessage(const char* argf, const char* retf, void * args, void * rets){
+    int arg_count = 0;
+    lua_assert(sizeof(char*) == sizeof(int));
+    lua_assert(sizeof(char*) == sizeof(float));
+    lua_getglobal(L, "__postMessage");
+    while(argf[arg_count]){
+        switch (argf[arg_count])
+        {
+        case 'S':
+            lua_pushstring(L,((char**)args)[arg_count]);
+            break;
+        case 'I':
+            lua_pushinteger(L,((int*)args)[arg_count]);
+            break;
+        case 'F':
+            lua_pushnumber(L,((float*)args)[arg_count]);
+            break;
+        default:
+            lua_pop(L,arg_count);
+            fprintf(stderr,"unable to post message, invalid argf format '%c' in %s.", argf[arg_count],argf);
+            return;
+        }
+        arg_count++;
+    }
+    int retlen = strlen(retf);
+    lua_call(L,arg_count, retlen);
+    
+    post_cleanup_count = retlen; // we don't cleanup the memory at this moment
+
+    int ret_count = 0;
+    while(retf[ret_count]){
+        switch(retf[ret_count])
+        {
+        case 'S':
+            if(lua_isstring(L,-retlen + ret_count)){
+                ((const char**)rets)[ret_count] = lua_tostring(L,- retlen + ret_count);
+            }else{
+                ((char**)rets)[ret_count] = NULL;
+            }
+            break;
+        case 'I':
+            if(lua_isnumber(L,- retlen + ret_count)){
+                ((int*)rets)[ret_count] = lua_tointeger(L,- retlen + ret_count);
+
+            }else{
+                ((int*)rets)[ret_count] = INT_MIN;
+            }
+            break;
+        case 'F':
+            if(lua_isnumber(L,- retlen + ret_count)){
+                ((float*)rets)[ret_count] = lua_tonumber(L,- retlen + ret_count);
+            }else{
+                ((float*)rets)[ret_count] = NAN;
+            }
+            break;
+        default:
+            fprintf(stderr,"warning: not support format '%c' in retf %s.", retf[ret_count],retf);
+        }
+        ret_count++;
+    }
+    //we don't clean up the memory at this moment (beause all strings are in memory)
+}
+//vmcallback(name, arg1, arg2, arg3, ...)
+static int lua_doCallback(lua_State *L){
+    int numarg = lua_gettop(L);
+
+    if(numarg < 1 || !lua_isstring(L,1)){
+        return luaL_error(L,"the first argument of vmcall should be string!");
+    }
+    const char * callback_name = lua_tostring(L,1);
+
+    int extra_numarg = numarg - 1;
+
+
+    void * args = malloc(extra_numarg * 4);
+    char * argf = malloc(extra_numarg + 1);
+    for(int i=0;i<extra_numarg;i++){
+        if(lua_isinteger(L,i+2)){
+            ((int*)args)[i] = lua_tointeger(L,i+2);
+            argf[i] = 'I';
+        }else if(lua_isnumber(L,i+2)){
+            ((float*)args)[i] = lua_tonumber(L,i+2);
+            argf[i] = 'F';
+        }else if(lua_isstring(L,i+2)){
+            ((const char**)args)[i] = lua_tostring(L,i+2);
+            argf[i] = 'S';
+        }else{
+            argf[i] = '-';
+        }
+    }
+    argf[extra_numarg] = '\0';
+    vmcallback(callback_name, argf,args);
+    return 0;
+}
 
 EMSCRIPTEN_KEEPALIVE
 const char * execute_lua(char * program,char * origin){
@@ -160,6 +272,14 @@ int init_vm(){
         luaL_requiref(L, "dom", luaopen_dom, 1);
     }
 
+    //add callback support
+    {
+        lua_pushglobaltable(L);
+        lua_pushcfunction(L, lua_doCallback);
+        lua_setfield(L, -2, "vmcallback");
+        lua_pop(L,1);
+    }
+
     execute_lua(
         "local __onclick_table = {}\n"
         "local oldOnClick = dom.onClick\n"
@@ -172,6 +292,16 @@ int init_vm(){
         "    local hash = dom.__docHash(elem)\n"
         "    for _,v in pairs(__onclick_table[hash]) do v() end\n"
         "end\n"
+        "local message_handlers = {}\n"
+        "function __postMessage(name, ...)\n"
+            "local handler = message_handlers[name]\n"
+            "if handler then return handler(...) end\n"
+        "end \n"
+        "function onMessage(name, func)\n"
+            "message_handlers[name] = func\n"
+        "end  \n"
+
+
         , "<internal>");
 
     return 0;
