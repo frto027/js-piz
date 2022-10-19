@@ -118,10 +118,12 @@ ready = function(){
     }
     /*
     js --post-message--> lua
-    window.luaPostMessage("IIISF","SSII",int,int,int,string,float) => [string,string,int,int]
+    window.luaPostMessage("start","IIISF","SSII",int,int,int,string,float) => [string,string,int,int]
     */
 
-    window.luaPostMessage = function(argf, retf /* ... args */){
+    window.luaPostMessage = function(message_name, argf, retf /* ... args */){
+        argf = "S" + argf
+        
         var argslen = argf.length
         var args = _malloc(argslen + 1)
         var retslen = retf.length
@@ -133,7 +135,8 @@ ready = function(){
 
         try{
             var heap_args = new Array(arguments.length - 2)
-            for(var i=0;i<heap_args.length;i++){
+            heap_args[0] = message_name
+            for(var i=1;i<heap_args.length;i++){
                 heap_args[i] = arguments[2+i]
             }
             heap_args = makeHeapArgs(argf, heap_args)

@@ -10,13 +10,26 @@
                     local a,b,c = dom.getElementById("yes_or_no"),dom.getElementById("yes_or_no1"),dom.getElementById("yes_or_no3")
                     dom.onClick(b,function() dom.setText(a,"1") end)
                     dom.onClick(c,function() dom.setText(a,"2") end)
-                    onMessage("start",function(name) print((name or "nop") .. ' started') end)
-                    `, "<init hello>")
-                    window.luaRegisterCallback("clickMe", "SI","SI",function(which, times){
-                        console.log("the lua program clicked 【", which, "】 times: ", times)
-                        return ['aaa',5]
-                    })
 
+                    -- register message handler for "start"
+                    onMessage("start",function(name,seed) print((name or "nop") .. ' started seed is '..seed) return 1,2,'s',3 end)
+                    `, "<init hello>")
+
+                    console.log(window.luaPostMessage(
+                        "start", /* message name */
+                        "SI",    /* input arguments type */
+                        "IISI",  /* return value type */
+                        /* input arguments */
+                        "yooo",33))
+                    window.luaRegisterCallback(
+                        "clickMe",  /* callback name */
+                        "SI",       /* callback arguments type */
+                        "SI",       /* callback return value type */
+                        function(which, times /* callback arguments */){
+                        console.log("the lua program clicked", which, "times:", times)
+                        return ['aaa',5 /* callback return value */]
+                    })
+                    //trigger vmcallback "clickMe"
                     window.luaExecute("local a,b = vmcallback('clickMe', 'the clock', 3) print(a,b)")
                 })
         </script>
