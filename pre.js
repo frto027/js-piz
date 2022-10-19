@@ -48,6 +48,54 @@ function parseHeapArgs(argf, arg_buffer){
     }
     return ret
 }
+function makeHeapArgs(argf, args){
+    var heap = HEAP32
+    var heapf = HEAPF32
+    var arg_buffer = _malloc(argf.length * 4)
+    var string_lists = []
+
+    for(var i=0;i<argf.length;i++){
+        var arg = args[i]
+        switch(argf[i]){
+            case 'S':
+                if(typeof(arg) != "string"){
+                    heap[(arg_buffer >> 2) + i] = 0
+                }else{
+                    var alen = lengthBytesUTF8(arg)+1
+                    var s = _malloc(alen)
+                    string_lists.push(s)
+                    stringToUTF8(arg,s,alen)
+                    heap[(arg_buffer>>2)+i]=s
+                }
+                break
+            case 'I':
+                if(typeof(arg) == "number"){
+                    heap[(arg_buffer >> 2) + i] = arg || 0
+                }else{
+                    heap[(arg_buffer >> 2) + i] = 0x7FFFFFFF
+                }
+                break
+            case 'F':
+                if(typeof(arg) == "number"){
+                    heapf[(arg_buffer>>2) + i] = arg
+                }else{
+                    heapf[(arg_buffer>>2) + i] = NaN
+                }
+                break
+            default:
+                console.error("unknown format ",argf[i], " in argf ",argf)
+        }
+    }
+    return {
+        arg_buffer : arg_buffer,
+        free:function(){
+            _free(arg_buffer)
+            for(var i=0;i<string_lists.length;i++){
+                _free(string_lists[i])
+            }    
+        }
+    }
+}
 
 var callback_table = new Map()
 ready = function(){
@@ -81,68 +129,34 @@ ready = function(){
         stringToUTF8(argf,args,argslen+1)
         stringToUTF8(retf,rets,retslen+1)
         
-        var arg_buffer = _malloc(argslen * 4)
         var ret_buffer = _malloc(retslen * 4)
 
-        var heap = HEAP32
-        var heapf = HEAPF32
-        var string_lists = []
         try{
-            for(var i=0;i<argf.length;i++){
-                var arg = arguments[2+i]
-                switch(argf[i]){
-                    case 'S':
-                        if(typeof(arg) != "string"){
-                            heap[(arg_buffer >> 2) + i] = 0
-                        }else{
-                            var alen = lengthBytesUTF8(arg)+1
-                            var s = _malloc(alen)
-                            string_lists.push(s)
-                            stringToUTF8(arg,s,alen)
-                            heap[(arg_buffer>>2)+i]=s
-                        }
-                        break
-                    case 'I':
-                        if(typeof(arg) == "number"){
-                            heap[(arg_buffer >> 2) + i] = arg || 0
-                        }else{
-                            heap[(arg_buffer >> 2) + i] = 0x7FFFFFFF
-                        }
-                        break
-                    case 'F':
-                        if(typeof(arg) == "number"){
-                            heapf[(arg_buffer>>2) + i] = arg
-                        }else{
-                            heapf[(arg_buffer>>2) + i] = NaN
-                        }
-                        break
-                    default:
-                        console.error("unknown format ",argf[i], " in argf ",argf)
-                }
+            var heap_args = new Array(arguments.length - 2)
+            for(var i=0;i<heap_args.length;i++){
+                heap_args[i] = arguments[2+i]
             }
-
+            heap_args = makeHeapArgs(argf, heap_args)
             try{
-                _postMessage(args, rets, arg_buffer, ret_buffer)
+                _postMessage(args, rets, heap_args.arg_buffer, ret_buffer)
                 return parseHeapArgs(retf, ret_buffer)
             }finally{
                 _postMessageCleanup()
+                heap_args.free()
             }
         }finally{
             _free(args)
             _free(rets)
-            _free(arg_buffer)
             _free(ret_buffer)
-            for(var i=0;i<string_lists.length;i++){
-                _free(string_lists[i])
-            }    
         }
     }
     //callback is functions, vm --call--> callback(js)
-    //window.luaRegisterCallback("clickMe", function(name, times1,times2,times3){}, "SIII")
-    window.luaRegisterCallback = function(callback_name, argf, callback){
+    //window.luaRegisterCallback("clickMe", "SIII", "", function(name, times1,times2,times3){})
+    window.luaRegisterCallback = function(callback_name, argf, retf, callback){
         callback_table.set(callback_name,{
             argf:argf,
-            callback:callback
+            retf:retf,
+            callback:callback /* function(...argf) => [...retf] */
         })
     }
 
@@ -227,7 +241,7 @@ var FUNCS = {
             _onclick(t)
         })
     },
-    vmcallback(callback_name, argf, args){
+    vmcallback(callback_name, argf, args, retf, rets){
         var callback_name_str = UTF8ToString(callback_name, 1024)
         var argf_str = UTF8ToString(argf, 100)
         if(!callback_table.has(callback_name_str))
@@ -263,6 +277,14 @@ var FUNCS = {
                 }
             }
         }
-        cbinfo.callback.apply(/* this is 'Module' */Module, args)
+
+        var ret_array = cbinfo.callback.apply(/* this is 'Module' */Module, args)
+        var rets_infos = makeHeapArgs(cbinfo.retf, ret_array || [])
+        /* we MUST free the retf and rets in C program! */
+        var retflen = lengthBytesUTF8(cbinfo.retf)
+        var retf_str = _malloc(retflen+1)
+        stringToUTF8(cbinfo.retf,retf_str, retflen+1)
+        HEAP32[retf>>2]=retf_str
+        HEAP32[rets>>2]=rets_infos.arg_buffer
     }
 }

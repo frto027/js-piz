@@ -1,7 +1,7 @@
 lua_path = 'lua-5.4.4/src/'
 lua_patch_path = 'lua_patch/'
 emcc_mode = true
-debug = false
+debug = true
 
 lua_files = Dir["#{lua_path}*.c"].select {
         |x|

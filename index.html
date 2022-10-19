@@ -12,11 +12,12 @@
                     dom.onClick(c,function() dom.setText(a,"2") end)
                     onMessage("start",function(name) print((name or "nop") .. ' started') end)
                     `, "<init hello>")
-                    window.luaRegisterCallback("clickMe", "SI",function(which, times){
+                    window.luaRegisterCallback("clickMe", "SI","SI",function(which, times){
                         console.log("the lua program clicked 【", which, "】 times: ", times)
+                        return ['aaa',5]
                     })
 
-                    window.luaExecute("vmcallback('clickMe', 'the clock', 3)")
+                    window.luaExecute("local a,b = vmcallback('clickMe', 'the clock', 3) print(a,b)")
                 })
         </script>
         <script src="out.js"></script>

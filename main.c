@@ -26,8 +26,8 @@ EM_JS(int, docSetText, (doc_t t, const char*text),{
 EM_JS(int, docAddOnclickListener,(doc_t t),{
     return FUNCS.docAddOnclickListener(t);
 });
-EM_JS(void, vmcallback, (const char * callback_name, char* argf, void *args),{
-    FUNCS.vmcallback(callback_name, argf, args);
+EM_JS(void, vmcallback, (const char * callback_name, char* argf, void *args, char**retf, void**rets),{
+    FUNCS.vmcallback(callback_name, argf, args, charretf, voidrets);
 });
 
 int post_cleanup_count = 0;
@@ -133,8 +133,41 @@ static int lua_doCallback(lua_State *L){
         }
     }
     argf[extra_numarg] = '\0';
-    vmcallback(callback_name, argf,args);
-    return 0;
+    void * rets;
+    char * retf;
+    vmcallback(callback_name, argf,args, &retf, &rets);
+
+    if(!retf)
+        return 0;
+    int i = 0;
+    while(retf[i]){
+        switch (retf[i])
+        {
+        case 'S':
+            {
+                char *str;
+                str = ((char**)rets)[i];
+                lua_pushstring(L,str);
+                free(str);
+            }
+            break;
+        case 'I':
+            lua_pushinteger(L, ((int*)rets)[i]);
+            break;
+        case 'F':
+            lua_pushnumber(L,((float*)rets)[i]);
+            break;
+        default:
+            lua_pushnil(L);
+            fprintf(stderr, "unknown format %c in %s", retf[i], retf);
+            break;
+        }
+        i++;
+    }
+    free(rets);
+    free(retf);
+
+    return i;
 }
 
 EMSCRIPTEN_KEEPALIVE
