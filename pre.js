@@ -42,6 +42,16 @@ function parseHeapArgs(argf, arg_buffer){
             case 'F':
                 ret[i] = heapf[(arg_buffer>>2)+i]
                 break
+            case 'B':
+                var v = heap[(arg_buffer>>2)+i]
+                if(v == 0){
+                    ret[i] = false
+                }else if(v == 1){
+                    ret[i] = true
+                }else{
+                    ret[i] = undefined
+                }
+                break
             default:
                 console.error("unknwon format ",retf[i]," in retf ",retf)
         }
@@ -82,6 +92,13 @@ function makeHeapArgs(argf, args){
                     heapf[(arg_buffer>>2) + i] = NaN
                 }
                 break
+            case 'B':
+                if(typeof(arg) == "boolean"){
+                    heap[(arg_buffer>>2) + i] = arg ? 1 : 0
+                }else{
+                    heap[(arg_buffer>>2) + i] = -0x80000000
+                }
+                break
             default:
                 console.error("unknown format ",argf[i], " in argf ",argf)
         }
@@ -96,8 +113,8 @@ function makeHeapArgs(argf, args){
         }
     }
 }
-
 var callback_table = new Map()
+var next_lua_data_index = 1
 ready = function(){
     _init_vm();
 
@@ -184,8 +201,6 @@ out = function(text){
 err = function(text){
     console.error("LUA Message:",text)
 }
-
-var next_lua_data_index = 1
 var lua_doc_maps = new Map()
 var FUNCS = {
     docGetElementById: function(charstr){
@@ -264,6 +279,8 @@ var FUNCS = {
                     case 'I':
                         if(argf_str[i] == 'F'){
                             args[i] = Math.floor(args[i])
+                        }else if(argf_str[i] == 'B'){
+                            args[i] = args[i] ? 1 : 0
                         }else{
                             args[i] = undefined
                         }
@@ -271,9 +288,14 @@ var FUNCS = {
                     case 'F':
                         if(argf_str[i] == 'I'){
                             //do nothing
+                        }else if(argf_str[i] == 'B'){
+                            args[i] = args[i] ? 1 : 0
                         }else{
                             args[i] = undefined
                         }
+                        break
+                    case 'B':
+                        args[i] = undefined
                         break
                     default:
                         console.error("unknown format ",argf_cb[i], " in ", argf_cb)

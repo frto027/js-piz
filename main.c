@@ -59,6 +59,9 @@ void postMessage(const char* argf, const char* retf, void * args, void * rets){
         case 'F':
             lua_pushnumber(L,((float*)args)[arg_count]);
             break;
+        case 'B':
+            lua_pushboolean(L,((int*)args)[arg_count] != 0);
+            break;
         default:
             lua_pop(L,arg_count);
             fprintf(stderr,"unable to post message, invalid argf format '%c' in %s.", argf[arg_count],argf);
@@ -97,6 +100,13 @@ void postMessage(const char* argf, const char* retf, void * args, void * rets){
                 ((float*)rets)[ret_count] = NAN;
             }
             break;
+        case 'B':
+            if(lua_isboolean(L,- retlen + ret_count)){
+                ((int*)rets)[ret_count] = lua_toboolean(L,- retlen + ret_count) != 0;
+            }else{
+                ((int*)rets)[ret_count] = INT_MIN;
+            }
+            break;
         default:
             fprintf(stderr,"warning: not support format '%c' in retf %s.", retf[ret_count],retf);
         }
@@ -128,6 +138,9 @@ static int lua_doCallback(lua_State *L){
         }else if(lua_isstring(L,i+2)){
             ((const char**)args)[i] = lua_tostring(L,i+2);
             argf[i] = 'S';
+        }else if(lua_isboolean(L,i+2)){
+            ((int*)args)[i] = lua_toboolean(L,i+2);
+            argf[i] = 'B';
         }else{
             argf[i] = '-';
         }
@@ -156,6 +169,9 @@ static int lua_doCallback(lua_State *L){
             break;
         case 'F':
             lua_pushnumber(L,((float*)rets)[i]);
+            break;
+        case 'B':
+            lua_pushboolean(L,((int*)rets)[i] != 0);
             break;
         default:
             lua_pushnil(L);

@@ -23,14 +23,14 @@
                         "yooo",33))
                     window.luaRegisterCallback(
                         "clickMe",  /* callback name */
-                        "SI",       /* callback arguments type */
+                        "SB",       /* callback arguments type */
                         "SI",       /* callback return value type */
                         function(which, times /* callback arguments */){
                         console.log("the lua program clicked", which, "times:", times)
                         return ['aaa',5 /* callback return value */]
                     })
                     //trigger vmcallback "clickMe"
-                    window.luaExecute("local a,b = vmcallback('clickMe', 'the clock', 3) print(a,b)")
+                    window.luaExecute("local a,b = vmcallback('clickMe', 'the clock', true) print(a,b)")
                 })
         </script>
         <script src="out.js"></script>
